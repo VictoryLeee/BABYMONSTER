@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <title>shiyanlou</title>
+    <style type="text/css">
+      .div1 {
+        margin: 50px;
+        width: 200px;
+        height: 200px;
+        background-color: lightgreen;
+        opacity: 0.5;
+        transition: 2s;
+      }
+      .div1:hover {
+        /*X 轴旋转*/
+        transform: rotateX(180deg);
+        opacity: 1;
+      }
+      .div2 {
+        margin: 50px;
+        width: 200px;
+        height: 200px;
+        background-color: cyan;
+        opacity: 0.5;
+        transition: 2s;
+      }
+      .div2:hover {
+        /*Y 轴伸缩*/
+        transform: scaleY(2);
+        opacity: 1;
+      }
+      .div3 {
+        margin: 50px;
+        width: 200px;
+        height: 200px;
+        background-color: orange;
+        opacity: 0.5;
+        transition: 2s;
+      }
+      .div3:hover {
+        /*X 轴移动*/
+        transform: translateX(50%);
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="div1">div1</div>
+    <div class="div2">div2</div>
+    <div class="div3">div3</div>
+  </body>
+</html>
