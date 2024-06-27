@@ -1,0 +1,750 @@
+<template>
+    <div class="table">
+      <component :is="basicContainer">
+        <slot name="tabs"></slot>
+  
+        <avue-crud
+          :option="{
+            columnBtn: false,
+            gridBtn: false,
+            searchShowBtn: false,
+            refreshBtn: false,
+            searchLabelWidth: 90,
+            searchIcon: true,
+            searchIndex: 3,
+            addTitle: `新增${title || ''}`,
+            editTitle: `修改${title || ''}`,
+            viewTitle: `${title || ''}详情`,
+            dialogWidth: 960,
+            ...option,
+            editBtn: false,
+            delBtn: false,
+            searchBtnText: '查询',
+            searchBtnIcon: '-',
+            emptyBtnText: '重置',
+            emptyBtnIcon: '-',
+            editBtnText: '修改',
+            viewBtnText: '详情',
+            saveBtnText: '确定',
+            updateBtnText: '确定',
+            updateBtnIcon: ' ',
+            saveBtnIcon: ' ',
+            cancelBtnIcon: ' '
+          }"
+          :search.sync="search"
+          :table-loading="loading"
+          :data="data"
+          ref="crud"
+          :key="key"
+          v-model="form"
+          :permission="permissionList"
+          @row-del="rowDel"
+          @row-update="rowUpdate"
+          @row-save="rowSave"
+          :before-open="beforeOpen"
+          :page.sync="page"
+          @row-dblclick="dbClick"
+          @row-click="handleRowClick"
+          @search-change="searchChange"
+          @search-reset="searchResetInit"
+          @selection-change="selectionChange"
+          @current-change="currentChange"
+          @size-change="sizeChange"
+          @refresh-change="refreshChange"
+          @on-load="onLoad"
+        >
+          <template v-slot:page>
+            <span style="float: left; font-size: 14px; padding-top: 4px">
+              <span v-if="selectionList.length"
+                >已选 {{ selectionList.length }} 条，&nbsp;</span
+              >
+              <span>共 {{ page.total }} 条</span>
+            </span>
+          </template>
+  
+          <!--菜单配置 slot ，新增，导入，导出等的位置， importOpen意思是弹出导入的外接口，  exportRow意思是可触发导出的外接口-->
+          <template v-slot:menuLeft>
+            <slot
+              name="menuLeft"
+              :importOpen="
+                () => {
+                  excelBox = true
+                }
+              "
+              :exportRow="exportRow"
+              :rowAdd="rowAdd"
+            ></slot>
+          </template>
+  
+          <!--操作栏自定义-->
+          <template v-slot:menu="{ size, disabled, type, row, index }">
+            <el-button
+              v-if="
+                option.editBtn &&
+                (!permissionList.hasOwnProperty('editBtn') ||
+                  (!permissionList.hasOwnProperty('statusBtn') &&
+                    permissionList.editBtn) ||
+                  (permissionList.hasOwnProperty('statusBtn') &&
+                    permissionList.statusBtn &&
+                    row.status === 0 &&
+                    permissionList.editBtn))
+              "
+              type="text"
+              size="mini"
+              @click="$refs.crud.rowEdit(row, index)"
+              >修改</el-button
+            >
+            <el-button
+              v-if="
+                option.delBtn &&
+                (!permissionList.hasOwnProperty('delBtn') ||
+                  (!permissionList.hasOwnProperty('statusBtn') &&
+                    permissionList.delBtn) ||
+                  (permissionList.hasOwnProperty('statusBtn') &&
+                    permissionList.statusBtn &&
+                    row.status === 0 &&
+                    permissionList.delBtn))
+              "
+              type="text"
+              size="mini"
+              class="delBtnStyle"
+              @click="$refs.crud.rowDel(row, index)"
+              >删除</el-button
+            >
+            <slot
+              name="menu"
+              :size="size"
+              :disabled="disabled"
+              :type="type"
+              :row="row"
+              :index="index"
+            ></slot>
+          </template>
+  
+          <!--状态slot 操作: 开启or禁用-->
+          <template v-slot:status="{ row }">
+            <avue-switch
+              v-if="permissionList.statusBtn"
+              :disabled="disabled"
+              v-model="row.status"
+              :dic="statusDic"
+              @click="changeState(row)"
+            ></avue-switch>
+            <span v-else>{{ row.status === 1 ? '启用' : '禁用' }}</span>
+          </template>
+          <!--状态formslot 展示-->
+          <template v-slot:statusForm="{ value, type }">
+            <template v-if="type === 'view'">
+              <span style="color: #606266">{{
+                value === 1 ? '启用' : '禁用'
+              }}</span>
+              <!-- <el-button size="mini" plain v-if="value === 1" type="success">启用</el-button>
+              <el-button size="mini" plain v-else type="danger">禁用</el-button>-->
+            </template>
+            <template v-else>
+              <avue-switch v-model="form.status" :dic="statusDic"></avue-switch>
+            </template>
+          </template>
+  
+          <!--表单table选择 -->
+          <template v-slot:[tableSlotType]="{ value, type }">
+            <selectTable
+              v-if="type != 'view'"
+              :getList="getTableList"
+              :option="tableOption"
+              :data="form[tableType]"
+              v-model="form[tableType]"
+            ></selectTable>
+          </template>
+  
+          <!-- 审检记录证书 -->
+          <template v-slot:certName="{row}">
+            <span style="color:#006dcc" v-if="row.certName" @click="$preView(JSON.parse(row.certName).url)">{{JSON.parse(row.certName).name}}</span>
+          </template>
+          <!-- 点检工单内点检标准列表的点检结果-->
+          <!-- <template v-slot:userIdForm="{}">
+            <slot name="userId" :form="form"></slot>
+          </template>-->
+          <!-- 点检工单内点检标准列表的点检结果-->
+          <template v-slot:modeType="{ row }">
+            <slot name="modeType" :row="row"></slot>
+          </template>
+          <!-- 点检工单内点检标准列表的点检状态-->
+          <template v-slot:finishStatus="{ row }">
+            <slot name="finishStatus" :row="row"></slot>
+          </template>
+          <template v-slot:modeTypeForm="{ type }">
+            <slot name="modeTypeForm" :form="form"></slot>
+          </template>
+          <template v-slot:slot_finishStatus="{ row }">
+            <slot name="slot_finishStatus" :row="row"></slot>
+          </template>
+          <!-- 点检工单列表点检进度-->
+          <template v-slot:progress="{ row }">
+            <slot name="progress" :row="row"></slot>
+          </template>
+          <template v-slot:progressForm="{ type }">
+            <slot name="progressForm" :form="form"></slot>
+          </template>
+          <template v-slot:itemCount="{ row }">
+            <slot name="itemCount" :row="row"></slot>
+          </template>
+          <template v-slot:templatePictureUrl="{ row }">
+            <slot name="templatePictureUrl" :row="row"></slot>
+          </template>
+          <!-- 工单有效期加上单位小时 -->
+          <template v-slot:orderValidityForm="{ value }">{{
+            value ? `${value}小时` : ''
+          }}</template>
+          <!-- select选项 -->
+          <template v-slot:labelListForm="{ value }">
+            {{ value.map((item) => item.name).join(',') }}
+          </template>
+          <template v-slot:labelIdListForm="{ type }">
+            <el-select
+              v-model="form.labelIdList"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              :disabled="labelDisabled"
+              placeholder="请选择"
+              @focus="focus(type)"
+              @change="labelChange($event, type)"
+            >
+              <el-option
+                v-for="item in labelOptions"
+                :key="item.id"
+                :label="item.name"
+                :value="item.id"
+              ></el-option>
+            </el-select>
+          </template>
+        </avue-crud>
+  
+        <!-- 导入 -->
+        <el-dialog
+          class="exportDialogStyle"
+          title="批量导入"
+          append-to-body
+          :visible.sync="excelBox"
+          width="480px"
+        >
+          <avue-form
+            :option="excelOption"
+            v-model="excelForm"
+            :upload-after="uploadAfter"
+          >
+            <template slot="excelTemplate">
+              <el-button type="text" @click="handleTemplate">
+                <i class="el-icon-download el-icon--right"></i>
+                <span style="font-size: 14px">点击下载导入模版.xlsx</span>
+              </el-button>
+            </template>
+          </avue-form>
+        </el-dialog>
+      </component>
+    </div>
+  </template>
+  
+  <script>
+  import { baseUrl } from '@/api/baseUrl'
+  import request from '@/router/axios'
+  import { formatDate } from '@/util/date'
+  export default {
+    props: {
+      key: {
+        type: String,
+        default: ''
+      },
+      title: {
+        type: String,
+        default: ''
+      },
+      templateName: {
+        type: String,
+        default: ''
+      },
+      tableApi: {
+        type: Object,
+        default: {}
+      },
+      basicContainer: {
+        type: String,
+        default: 'basicContainer'
+      },
+      // 原始查询参数 ： 无可被清除的那种，比如链接上会传的参数，或者选项卡的
+      extendQueryParams: {
+        type: Object,
+        default: {}
+      },
+      // 原始表单参数 ： 当新增时必带入
+      extendCreateParams: {
+        type: Object,
+        default: {}
+      },
+      extendData: {
+        type: Array,
+        default: []
+      },
+      option: {
+        type: Object,
+        default: {}
+      },
+      permissionList: {
+        type: Object,
+        default: {}
+      },
+      getTableList: {
+        type: Function,
+        default: () => {}
+      },
+      tableOption: {
+        type: Object,
+        default: {}
+      },
+      tableType: {
+        type: String
+      },
+      tableSlotType: {
+        type: String
+      },
+      labelOptions: {
+        type: Array,
+        default: []
+      }
+    },
+    computed: {
+      ids() {
+        const ids = []
+        this.selectionList.forEach((ele) => {
+          ids.push(ele.id)
+        })
+        return ids.join(',')
+      }
+    },
+    data() {
+      return {
+        form: {},
+        search: {},
+        selectionList: [],
+        query: {},
+        treeQuery: {},
+        loading: true,
+        data: [],
+        query: {},
+        page: {
+          pageSize: 10,
+          currentPage: 1,
+          total: 0,
+          layout: 'sizes, prev, pager, next, jumper, ->'
+        },
+        statusDic: [
+          {
+            label: ' ',
+            value: 0
+          },
+          {
+            label: '',
+            value: 1
+          }
+        ],
+        excelBox: false,
+        excelForm: {},
+        excelOption: {
+          menuBtn: false,
+          submitBtn: false,
+          emptyBtn: false,
+          labelWidth: 20,
+          column: [
+            {
+              // label: '批量上传',
+              prop: 'excelFile',
+              span: 24,
+              type: 'upload',
+              accept: '.xls,.xlsx',
+              drag: true,
+              fileText: '将文件拖到此处，或 点击上传',
+              loadText: '上传中，请稍等',
+              dragFile: true,
+              propsHttp: {
+                res: 'data',
+                name: 'name',
+                url: 'url'
+              },
+              props: {
+                label: 'fileName',
+                value: 'fileUrl'
+              },
+              showFileList: true,
+              tip: '请上传xls、xlsx 格式文件',
+              action: `${this.tableApi.importExcel}`,
+              uploadPreview(file, column, done) {
+                this.$preView(file.url)
+              }
+            },
+            {
+              // label: '模板下载',
+              prop: 'excelTemplate',
+              span: 24
+            }
+          ]
+        },
+        labelDisabled: false
+      }
+    },
+    mounted() {
+      // this.onLoad()
+    },
+    watch: {
+      form: {
+        handler(newVal, oldVal) {
+          // 当formData发生变化时，这里会被触发
+          // console.log('表单数据变化了', newVal, oldVal);
+          // 触发父组件 需要知道form改变情况下使用
+          this.$emit('formDataChange', newVal, oldVal)
+        },
+        deep: true // 开启深度监听
+      }
+    },
+    methods: {
+      onLoad(page, params = {}) {
+        this.loading = true
+        this.tableApi
+          .getList(
+            page.currentPage,
+            page.pageSize,
+            Object.assign(params, this.query, this.extendQueryParams)
+          )
+          .then(
+            (res) => {
+              const data = res.data.data
+              this.page.total = data.total
+              this.data = [...data.records, ...this.extendData]
+              this.loading = false
+              this.selectionClear()
+              this.refreshTable()
+            },
+            (error) => {
+              this.loading = false
+            }
+          )
+      },
+      rowSave(row, done, loading) {
+        console.log(row)
+        if (row.hasOwnProperty('targetFiles') && row.targetFiles.length) {
+          row.targetFiles.map((val) => {
+            val.type = ''
+            val.size = ''
+          })
+        }
+        if (row.hasOwnProperty('effectiveDate')) {
+          row.effectiveDate = formatDate(row.effectiveDate)
+        }
+        this.tableApi.add({ ...row, ...this.extendCreateParams }).then(
+          (res) => {
+            this.onLoad(this.page)
+            this.$message({
+              type: 'success',
+              message: '操作成功!'
+            })
+            this.$emit('createAfter', res.data)
+            done()
+          },
+          (error) => {
+            window.console.log(error)
+            loading()
+          }
+        )
+      },
+      rowUpdate(row, index, done, loading) {
+        if (row.hasOwnProperty('targetFiles') && row.targetFiles.length) {
+          row.targetFiles.map((val) => {
+            val.type = ''
+            val.size = ''
+          })
+        }
+  
+        if (row.hasOwnProperty('effectiveDate')) {
+          row.effectiveDate = formatDate(row.effectiveDate)
+        }
+        this.tableApi.update(row).then(
+          (res) => {
+            this.onLoad(this.page)
+            this.$message({
+              type: 'success',
+              message: '操作成功!'
+            })
+            this.$emit('updateAfter', res.data)
+            done()
+          },
+          (error) => {
+            window.console.log(error)
+            loading()
+          }
+        )
+      },
+      rowDel(row) {
+        this.$confirm('确定将选择数据删除?', '删除提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+          .then(() => {
+            return this.tableApi.del(row.id)
+          })
+          .then(() => {
+            this.onLoad(this.page)
+            this.$emit('deleteAfter')
+            this.$message({
+              type: 'success',
+              message: '操作成功!'
+            })
+          })
+      },
+      // 更改状态
+      changeState(row) {
+        console.log(row)
+        let newStatus = row.status
+        if (newStatus === 1) {
+          this.tableApi.enabled(row.id).then(
+            (res) => {
+              console.log(res)
+              this.onLoad(this.page)
+              this.$message.success('启用成功')
+            },
+            (error) => {
+              // 处理错误
+              this.onLoad(this.page)
+            }
+          )
+          // .catch(error => {
+          //   this.onLoad(this.page)
+          //   console.log('大错特错')
+          //   console.log(error)
+          // })
+        } else {
+          this.tableApi.disabled(row.id).then(
+            () => {
+              this.onLoad(this.page)
+              this.$message.success('禁用成功')
+            },
+            (error) => {
+              // 处理错误
+              this.onLoad(this.page)
+            }
+          )
+        }
+      },
+      rowAdd() {
+        this.$refs.crud.rowAdd()
+      },
+      uploadAfter(res, done, loading, column) {
+        console.log(res)
+        if (res === '操作成功') {
+          done()
+          this.$message({
+            type: 'success',
+            message: '文件上传成功!'
+          })
+          this.excelBox = false
+          this.onLoad(this.page)
+        } else {
+          loading()
+        }
+      },
+      handleTemplate() {
+        const a = document.createElement('a')
+        a.href = `./excels/${this.templateName || this.title}.xlsx`
+        a.download = `${this.templateName || this.title}`
+        a.click()
+      },
+      // 导出
+      exportRow(params) {
+        if (this.selectionList.length == 0 && this.page.total > 10000) {
+          this.$message.warning('最大导出数量不能大于10000条')
+        } else {
+          this.$confirm(`确定将选择数据导出?`, '导出提示', {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }).then(() => {
+            const data = {
+              current: this.page.currentPage,
+              size: this.page.pageSize,
+              idList: this.selectionList.map((item) => item.id),
+              ...this.query,
+              ...this.extendQueryParams,
+              ...params
+            }
+            this.tableApi.exportExcel(data).then((res) => {
+              const blob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              }) // application/vnd.openxmlformats-officedocument.spreadsheetml.sheet这里表示xlsx类型
+              const href = window.URL.createObjectURL(blob) // 返回内存中地址的字符串
+              const link = document.createElement('a')
+              link.href = href //	在适当的位置提供对象URL来使用文件。
+              const filename = decodeURIComponent(
+                res.headers['content-disposition'].slice(
+                  res.headers['content-disposition'].indexOf('=') + 1,
+                  -5
+                )
+              ).replace(/\:/g, '：')
+              link.download = filename // 下载后文件名
+              document.body.appendChild(link)
+              link.click() // 点击下载
+              document.body.removeChild(link) // 下载完成移除元素
+              window.URL.revokeObjectURL(href) // 释放掉blob对象
+              this.$refs.crud.toggleSelection()
+              this.$message({
+                type: 'success',
+                message: '导出成功!'
+              })
+            })
+          })
+        }
+      },
+      searchResetInit() {
+        this.$emit('tableSearchReset')
+        this.query = {}
+        this.treeQuery = {}
+        setTimeout(() => {
+          this.onLoad(this.page)
+        })
+      },
+      searchReset() {
+        try {
+          this.$refs.crud.searchReset()
+        } catch (error) {
+          this.$emit('tableSearchReset')
+          this.query = {}
+          this.treeQuery = {}
+          setTimeout(() => {
+            this.onLoad(this.page)
+          })
+        }
+      },
+      searchChange(params, done) {
+        // 特殊处理： 开始结束时间 timeStartAndEnd
+        if (params.timeStartAndEnd) {
+          params['finishTimeStart'] = params.timeStartAndEnd[0]
+          params['finishTimeEnd'] = params.timeStartAndEnd[1]
+        }
+        //处理搜索时日期范围传值
+        this.$emit('tableSearchChange', params)
+        // 特殊处理：  加上treeQuery
+        this.query = { ...params, ...this.treeQuery }
+        this.page.currentPage = 1
+        this.onLoad(this.page, params)
+        done()
+      },
+      treeSearchChange(params) {
+        this.treeQuery = params
+        this.query = params
+        this.page.currentPage = 1
+        this.onLoad(this.page, params)
+      },
+      selectionChange(list) {
+        this.selectionList = list
+        this.$emit('selectionChange', list)
+      },
+      selectionClear() {
+        this.selectionList = []
+        this.$refs.crud.toggleSelection()
+      },
+      dbClick(row) {
+        this.$emit('dbClick', row)
+      },
+      handleRowClick(row) {
+        this.$emit('handleRowClick', row)
+      },
+      currentChange(currentPage) {
+        this.page.currentPage = currentPage
+      },
+      sizeChange(pageSize) {
+        this.page.pageSize = pageSize
+      },
+      refreshChange() {
+        this.onLoad(this.page, this.query)
+      },
+      beforeOpen(done, type) {
+        if (['edit', 'view'].includes(type)) {
+          if (this.tableApi.hasOwnProperty('getDetail')) {
+            // console.log(typeof that.form.id)
+            this.tableApi.getDetail(this.form.id).then(
+              (res) => {
+                // console.log(res, '返回结果')
+                // Object.assign
+                this.form = res.data.data
+                // console.log(this.form)
+              },
+              (error) => {
+                console.error()
+              }
+            )
+          }
+        } else if (type === 'add') {
+          // 触发父组件 需要知道beforeOpen情况下使用
+          this.$emit('beforeOpen')
+        }
+        done()
+      },
+      focus(type) {},
+      labelChange(e, type) {
+        let labelId = []
+        this.labelOptions.forEach((i) => {
+          labelId.push(i.id)
+        })
+        let that = this
+        // 判断已选的标签是否在数据库中
+        if (e.every((value) => labelId.includes(value))) {
+          console.log('1')
+          return
+        } else {
+          let newLabel = e.filter((item) => labelId.indexOf(item) === -1)
+          request({
+            url: baseUrl + 'label',
+            method: 'post',
+            data: { name: newLabel.join('') }
+          }).then((res) => {
+            request({
+              url: baseUrl + 'label/page?current=1&size=1000',
+              method: 'get'
+            }).then((res) => {
+              this.labelOptions = res.data.data.records
+              this.labelOptions.forEach((i) => {
+                if (i.name == newLabel.join('')) {
+                  let index = that.form.labelIdList.indexOf(newLabel.join(''))
+                  if (index !== -1) {
+                    that.form.labelIdList.splice(index, 1)
+                  }
+                  request({
+                    url: baseUrl + 'label/page?current=1&size=1000',
+                    method: 'get'
+                  }).then((res) => {
+                    that.labelOptions = res.data.data.records
+                    that.form.labelIdList.push(i.id)
+                  })
+                }
+              })
+            })
+          })
+        }
+      },
+      refreshTable() {
+        console.log('刷新')
+        //解决option变化后表格错层
+        this.$refs.crud.refreshTable()
+        this.$refs.crud.doLayout()
+        this.$refs.crud.dicInit()
+      }
+    }
+  }
+  </script>
+  <style lang="scss">
+  .el-table__body tr.current-row > td {
+    background-color: #f5f6fa;
+    color: #006dcc;
+  }
+  </style>
+  
